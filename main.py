@@ -177,7 +177,7 @@ async def stream_workflow(request: EndToEndRequest, session: Session = Depends(g
     async def event_generator():
         try:
             # 1. Yield parsing status
-            yield f"data: {json.dumps({'status': 'parsing', 'message': '⚡ System 1 (Jev) parsing parameters with strict type safety...'})}\n\n"
+            yield f"data: {json.dumps({'status': 'parsing', 'message': 'System 1 (Jev) parsing parameters with strict type safety...'})}\n\n"
             await asyncio.sleep(0.1)
 
             # 2. Extract task details
@@ -185,9 +185,9 @@ async def stream_workflow(request: EndToEndRequest, session: Session = Depends(g
 
             # 3. Yield ranking status
             ranking_msg = (
-                f"⚙️ Task extracted. Calculating capacity (excluding {len(request.rejected_candidates)} rejected candidates)..."
+                f"Task extracted. Calculating capacity (excluding {len(request.rejected_candidates)} rejected candidates)..."
                 if request.rejected_candidates
-                else "⚙️ Task extracted. Calculating deterministic capacity..."
+                else "Task extracted. Calculating deterministic capacity..."
             )
             yield f"data: {json.dumps({'status': 'ranking', 'message': ranking_msg})}\n\n"
             await asyncio.sleep(0.1)
@@ -201,7 +201,7 @@ async def stream_workflow(request: EndToEndRequest, session: Session = Depends(g
             top_candidates = candidates[:3]
 
             # 5. Yield reasoning status
-            yield f"data: {json.dumps({'status': 'reasoning', 'message': '🧠 System 2 (Llama 3) generating natural language trade-off analysis...'})}\n\n"
+            yield f"data: {json.dumps({'status': 'reasoning', 'message': 'System 2 (Llama 3) generating natural language trade-off analysis...'})}\n\n"
             await asyncio.sleep(0.1)
 
             # 6. Generate recommendation
@@ -389,8 +389,22 @@ def get_dashboard_overview(session: Session = Depends(get_session), user_role: s
             "active_tasks_count": len(tasks)
         })
         
+    all_tasks = get_all_tasks(session=session)
+    tasks_summary = [
+        {
+            "task_id": t.task_id,
+            "title": t.title,
+            "priority": t.priority,
+            "status": t.status,
+            "assigned_to": t.assigned_to,
+            "estimated_effort_hours": t.estimated_effort_hours
+        }
+        for t in all_tasks
+    ]
+        
     return {
         "team_workload": overview,
-        "recent_audits": get_audit_logs(session=session)[:5],
-        "active_task_count": len([t for t in get_all_tasks(session=session) if t.status != "Done"])
+        "recent_audits": get_audit_logs(session=session)[:10],
+        "active_task_count": len([t for t in all_tasks if t.status != "Done"]),
+        "tasks": tasks_summary
     }
