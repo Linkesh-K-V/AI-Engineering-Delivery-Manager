@@ -20,7 +20,7 @@ TEST_SCENARIOS = [
 
 def run_evaluation_benchmark():
     print("=" * 60)
-    print("AI DELIVERY MANAGER — AUTOMATED EVALUATION SUITE")
+    print("AI ENGINEERING DELIVERY MANAGER — AUTOMATED EVALUATION SUITE")
     print("=" * 60)
     
     successes = 0

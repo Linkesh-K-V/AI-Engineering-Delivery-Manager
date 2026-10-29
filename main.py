@@ -47,7 +47,7 @@ from security import require_manager, require_employee
 WEBHOOK_URL = "https://httpbin.org/post"
 
 app = FastAPI(
-    title="AI Delivery Manager API",
+    title="AI Engineering Delivery Manager API",
     description="Backend for the Intelligent Workforce Management System",
     version="0.1.0"
 )
@@ -58,7 +58,7 @@ def on_startup():
 
 @app.get("/")
 def health_check():
-    return {"status": "ok", "message": "AI Delivery Manager API is running"}
+    return {"status": "ok", "message": "AI Engineering Delivery Manager API is running"}
 
 @app.get("/api/employees", response_model=List[Employee])
 def list_employees(session: Session = Depends(get_session)):

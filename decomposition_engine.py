@@ -16,7 +16,7 @@ def evaluate_and_decompose_task(manager_prompt: str, target_deadline_days: float
     and checks if the requested deadline is realistic.
     """
     system_prompt = f"""
-    You are an AI Delivery Manager specializing in Agile technical decomposition.
+    You are an AI Engineering Delivery Manager specializing in Agile technical decomposition.
     Guidelines:
     1. If a task takes >16 hours or covers multiple separate engineering domains (e.g., UI + Backend + Testing), set is_compound=True.
     2. Decompose compound tasks into atomic subtasks of 2 to 8 hours each.

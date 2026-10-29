@@ -1,4 +1,4 @@
-# AI Delivery Manager
+# AI Engineering Delivery Manager
 
 An enterprise-grade, hybrid Generative AI workforce management system. This project solves the critical failure modes of pure-LLM agents (mathematical hallucinations and black-box decision-making) by combining probabilistic natural language processing with deterministic business logic.
 

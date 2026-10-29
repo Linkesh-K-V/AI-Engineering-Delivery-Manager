@@ -35,7 +35,7 @@ def create_presentation():
     tf1.word_wrap = True
 
     p1 = tf1.paragraphs[0]
-    p1.text = "AI Delivery Manager"
+    p1.text = "AI Engineering Delivery Manager"
     p1.font.size = Pt(40)
     p1.font.bold = True
     p1.font.color.rgb = RGBColor(37, 99, 235)
@@ -189,7 +189,7 @@ def create_presentation():
     table.columns[1].width = Inches(4.45)
     table.columns[2].width = Inches(4.45)
 
-    headers = ["Lifecycle Stage", "Traditional Workflow", "GenAI Workflow (AI Delivery Manager)"]
+    headers = ["Lifecycle Stage", "Traditional Workflow", "GenAI Workflow (AI Engineering Delivery Manager)"]
     for col_idx, text in enumerate(headers):
         cell = table.cell(0, col_idx)
         cell.text = text
