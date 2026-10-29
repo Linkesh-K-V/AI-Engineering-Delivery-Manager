@@ -1,6 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+from sqlmodel import SQLModel, Field
+from sqlalchemy import Column, JSON, DateTime
+from sqlalchemy.types import TypeDecorator
 from enum import IntEnum, Enum
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 from datetime import datetime
 
@@ -10,6 +13,18 @@ class SkillLevel(IntEnum):
     INTERMEDIATE = 3
     ADVANCED = 4
     EXPERT = 5
+
+class SkillsJSON(TypeDecorator):
+    impl = JSON
+    cache_ok = True
+
+    def process_result_value(self, value, dialect):
+        if value is not None and isinstance(value, dict):
+            return {
+                k: SkillLevel(v) if isinstance(v, (int, str)) and not isinstance(v, SkillLevel) else v
+                for k, v in value.items()
+            }
+        return value
 
 class TaskPriority(str, Enum):
     LOW = "Low"
@@ -23,24 +38,28 @@ class TaskStatus(str, Enum):
     REVIEW = "Review"
     DONE = "Done"
 
-class Employee(BaseModel):
-    employee_id: str
+class Employee(SQLModel, table=True):
+    employee_id: str = Field(primary_key=True)
     name: str
     role: str
-    skills: Dict[str, SkillLevel] = Field(description="Dictionary of skill names and their 1-5 proficiency level")
-    working_hours_per_day: int = 8
+    skills: Dict[str, SkillLevel] = Field(
+        default_factory=dict,
+        sa_column=Column(SkillsJSON),
+        description="Dictionary of skill names and their 1-5 proficiency level"
+    )
+    working_hours_per_day: int = Field(default=8)
 
-class Task(BaseModel):
-    task_id: str
+class Task(SQLModel, table=True):
+    task_id: str = Field(primary_key=True)
     title: str
     description: str
     project: str
     priority: TaskPriority
-    status: TaskStatus = TaskStatus.TODO
-    required_skills: Dict[str, SkillLevel]
-    estimated_effort_hours: Optional[float] = None
-    dependencies: List[str] = Field(default_factory=list, description="List of Task IDs that must be completed first")
-    assigned_to: Optional[str] = None
+    status: TaskStatus = Field(default=TaskStatus.TODO)
+    required_skills: Dict[str, SkillLevel] = Field(default_factory=dict, sa_column=Column(SkillsJSON))
+    estimated_effort_hours: Optional[float] = Field(default=None)
+    dependencies: List[str] = Field(default_factory=list, sa_column=Column(JSON), description="List of Task IDs that must be completed first")
+    assigned_to: Optional[str] = Field(default=None)
 
 class CalendarEvent(BaseModel):
     event_id: str
@@ -96,6 +115,10 @@ class ManagerApprovalRequest(BaseModel):
     decision: ApprovalDecision
     manager_feedback: Optional[str] = Field(default=None, description="Optional reason for rejection or modification")
 
+class EndToEndRequest(BaseModel):
+    manager_prompt: str
+    rejected_candidates: list[str] = Field(default_factory=list)
+
 # Add this below your existing models
 class RequestType(str, Enum):
     TIME_OFF = "Time Off"
@@ -109,15 +132,15 @@ class ImpactReport(BaseModel):
     affected_tasks: List[str] = Field(description="List of Task IDs that are directly impacted by this request")
     recommended_manager_action: str = Field(description="Actionable advice for the manager (e.g., 'Reassign T-123 to another developer' or 'Extend deadline by 2 days')")
 
-class AuditLogEntry(BaseModel):
-    log_id: str
-    timestamp: datetime
+class AuditLogEntry(SQLModel, table=True):
+    log_id: str = Field(primary_key=True)
+    timestamp: datetime = Field(default_factory=datetime.utcnow, sa_column=Column(DateTime))
     event_type: str  # e.g., "AI_RECOMMENDATION_GENERATED", "MANAGER_DECISION"
     task_title: str
-    target_employee_id: Optional[str] = None
-    ai_confidence: Optional[ConfidenceLevel] = None
-    details: Dict[str, str] = Field(default_factory=dict)
-    manager_decision: Optional[str] = None
+    target_employee_id: Optional[str] = Field(default=None)
+    ai_confidence: Optional[ConfidenceLevel] = Field(default=None)
+    details: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
+    manager_decision: Optional[str] = Field(default=None)
 
 class SubTaskPlan(BaseModel):
     title: str = Field(description="Subtask title")
@@ -138,12 +161,13 @@ class TaskCompletionRecord(BaseModel):
     actual_hours_spent: float
     notes: Optional[str] = None
 
-class HistoricalTaskLog(BaseModel):
+class HistoricalTaskLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
     task_id: str
     employee_id: str
     task_type: str  # e.g., "Backend", "Frontend", "Testing"
     estimated_hours: float
     actual_hours: float
     variance_ratio: float  # actual / estimated
-    completed_at: datetime
+    completed_at: datetime = Field(sa_column=Column(DateTime))
 

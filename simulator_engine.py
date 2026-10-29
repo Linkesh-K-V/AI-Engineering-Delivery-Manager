@@ -1,14 +1,19 @@
-from mock_data import get_employee_active_tasks, get_all_employees
+from typing import Optional
+from sqlmodel import Session
+from crud import get_employee_active_tasks, get_all_employees
 from candidate_engine import rank_candidates
 from models import TaskExtraction
 
-def simulate_employee_absence(absent_employee_id: str) -> dict:
+def simulate_employee_absence(
+    absent_employee_id: str,
+    session: Optional[Session] = None
+) -> dict:
     """
     Simulates removing an employee from the workforce. Identifies their active tasks
     and calculates who should take them over and how it affects their capacity.
     """
     # 1. Identify the blast radius (which tasks are suddenly orphaned?)
-    orphaned_tasks = get_employee_active_tasks(absent_employee_id)
+    orphaned_tasks = get_employee_active_tasks(absent_employee_id, session=session)
     
     reassignment_plan = []
     
@@ -23,7 +28,7 @@ def simulate_employee_absence(absent_employee_id: str) -> dict:
         )
         
         # 2. Run the deterministic engine, strictly excluding the absent employee
-        candidates = rank_candidates(task_req, exclude_employee_ids=[absent_employee_id])
+        candidates = rank_candidates(task_req, exclude_employee_ids=[absent_employee_id], session=session)
         
         if candidates:
             best_match = candidates[0]

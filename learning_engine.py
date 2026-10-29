@@ -1,15 +1,21 @@
 from typing import List, Optional
 from datetime import datetime
-from models import HistoricalTaskLog, TaskCompletionRecord
-from mock_data import get_task_history, get_all_tasks
+from sqlmodel import Session
+from database import engine
+from models import HistoricalTaskLog, TaskCompletionRecord, Task, TaskStatus
+from crud import get_task_history, get_all_tasks
 
-def get_employee_calibration_factor(employee_id: str, task_type: str = "General") -> float:
+def get_employee_calibration_factor(
+    employee_id: str,
+    task_type: str = "General",
+    session: Optional[Session] = None
+) -> float:
     """
     Calculates the statistical variance ratio (actual / estimated) for an employee.
     A factor < 1.0 means the employee completes tasks faster than estimated.
     A factor > 1.0 means the employee requires extra buffer.
     """
-    history = get_task_history()
+    history = get_task_history(session=session)
     relevant_tasks = [
         t for t in history 
         if t.employee_id == employee_id and (task_type == "General" or t.task_type == task_type)
@@ -27,18 +33,23 @@ def get_employee_calibration_factor(employee_id: str, task_type: str = "General"
         
     return round(total_act / total_est, 2)
 
-def record_task_completion(record: TaskCompletionRecord) -> Optional[HistoricalTaskLog]:
+def record_task_completion(
+    record: TaskCompletionRecord,
+    session: Optional[Session] = None
+) -> Optional[HistoricalTaskLog]:
     """
     Closes out a task, compares estimated vs actual duration, 
     and updates the learning feedback dataset.
     """
-    tasks = get_all_tasks()
-    task = next((t for t in tasks if t.task_id == record.task_id), None)
-    
+    if session is None:
+        with Session(engine) as local_session:
+            return record_task_completion(record, session=local_session)
+
+    task = session.get(Task, record.task_id)
     if not task or not task.assigned_to:
         return None
         
-    task.status = "Done"
+    task.status = TaskStatus.DONE
     est_hours = task.estimated_effort_hours or record.actual_hours_spent
     variance = round(record.actual_hours_spent / est_hours, 2) if est_hours > 0 else 1.0
     
@@ -55,5 +66,8 @@ def record_task_completion(record: TaskCompletionRecord) -> Optional[HistoricalT
         completed_at=datetime.now()
     )
     
-    get_task_history().append(log_entry)
+    session.add(task)
+    session.add(log_entry)
+    session.commit()
+    session.refresh(log_entry)
     return log_entry

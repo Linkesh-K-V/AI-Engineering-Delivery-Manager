@@ -1,7 +1,9 @@
 import instructor
 from openai import OpenAI
+from typing import Optional
+from sqlmodel import Session
 from models import ImpactReport
-from mock_data import get_employee_active_tasks
+from crud import get_employee_active_tasks
 
 # Initialize our local Llama 3 client via Instructor
 client = instructor.from_openai(
@@ -12,13 +14,17 @@ client = instructor.from_openai(
     mode=instructor.Mode.JSON,
 )
 
-def analyze_employee_impact(employee_id: str, employee_message: str) -> ImpactReport:
+def analyze_employee_impact(
+    employee_id: str,
+    employee_message: str,
+    session: Optional[Session] = None
+) -> ImpactReport:
     """
     Reads an employee's natural language request, cross-references it with 
     their active tasks, and generates an impact report for the manager.
     """
     # 1. Fetch the exact factual data for this specific employee
-    active_tasks = get_employee_active_tasks(employee_id)
+    active_tasks = get_employee_active_tasks(employee_id, session=session)
     
     # 2. Convert to JSON string for the prompt
     tasks_json = [t.model_dump() for t in active_tasks]

@@ -38,14 +38,8 @@ MOCK_TASKS = [
     )
 ]
 
-def get_all_employees() -> list[Employee]:
-    return MOCK_EMPLOYEES
-
-def get_all_tasks() -> list[Task]:
-    return MOCK_TASKS
-
 MOCK_TASKS[0].assigned_to = "E02"
-MOCK_TASKS[0].status = "In Progress"
+MOCK_TASKS[0].status = TaskStatus.IN_PROGRESS
 
 now = datetime.now()
 
@@ -64,37 +58,6 @@ MOCK_CALENDAR = [
         is_private=True
     )
 ]
-
-def get_employee_calendar(employee_id: str) -> list[CalendarEvent]:
-    return [event for event in MOCK_CALENDAR if event.employee_id == employee_id]
-
-def get_employee_active_tasks(employee_id: str) -> list[Task]:
-    return [task for task in MOCK_TASKS if task.assigned_to == employee_id and task.status != "Done"]
-
-def execute_task_assignment(task_req: TaskExtraction, assigned_employee_id: str) -> Task:
-    """
-    Takes the approved task requirements, generates a unique ID, 
-    assigns it to the employee, and saves it to the database.
-    """
-    # Generate a random ID for the new task
-    new_task_id = f"T-{str(uuid.uuid4())[:6].upper()}"
-    
-    new_task = Task(
-        task_id=new_task_id,
-        title=task_req.title,
-        description=task_req.description,
-        project="Ad-hoc Manager Request", # Defaulting for now
-        priority=task_req.priority,
-        required_skills=task_req.required_skills,
-        estimated_effort_hours=task_req.estimated_effort_hours,
-        status=TaskStatus.TODO,
-        assigned_to=assigned_employee_id
-    )
-    
-    # "Save" to our mock database
-    MOCK_TASKS.append(new_task)
-    
-    return new_task
 
 from models import HistoricalTaskLog
 
@@ -130,5 +93,12 @@ MOCK_HISTORY: list[HistoricalTaskLog] = [
     )
 ]
 
-def get_task_history() -> list[HistoricalTaskLog]:
-    return MOCK_HISTORY
+# Re-export CRUD functions for backward compatibility
+from crud import (
+    get_all_employees,
+    get_all_tasks,
+    get_employee_active_tasks,
+    execute_task_assignment,
+    get_task_history,
+    get_employee_calendar,
+)

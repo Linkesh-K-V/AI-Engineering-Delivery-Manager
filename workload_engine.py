@@ -1,7 +1,13 @@
+from typing import Optional
+from sqlmodel import Session
 from models import Employee, WorkloadSummary
-from mock_data import get_employee_calendar, get_employee_active_tasks
+from crud import get_employee_calendar, get_employee_active_tasks
 
-def calculate_employee_capacity(employee: Employee, days: int = 5) -> WorkloadSummary:
+def calculate_employee_capacity(
+    employee: Employee,
+    days: int = 5,
+    session: Optional[Session] = None
+) -> WorkloadSummary:
     """
     Deterministically calculates an employee's capacity over a given day window.
     Formula: (Working Days * Hours/Day) - (Meeting Hours + Active Task Hours)
@@ -16,7 +22,7 @@ def calculate_employee_capacity(employee: Employee, days: int = 5) -> WorkloadSu
         meeting_hours += duration.total_seconds() / 3600.0
 
     # 2. Sum up existing task effort
-    tasks = get_employee_active_tasks(employee.employee_id)
+    tasks = get_employee_active_tasks(employee.employee_id, session=session)
     task_hours = 0.0
     for task in tasks:
         if task.estimated_effort_hours:

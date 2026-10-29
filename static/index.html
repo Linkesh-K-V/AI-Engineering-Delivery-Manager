@@ -42,10 +42,7 @@
       <h4>What-If Absence Simulator</h4>
       <label for="simSelect">Simulate absence for:</label>
       <select id="simSelect">
-        <option value="E02">Bob (E02 — Backend Developer)</option>
-        <option value="E03">Charlie (E03 — Frontend Developer)</option>
-        <option value="E04">Diana (E04 — AI/ML Engineer)</option>
-        <option value="E10">Jack (E10 — Junior Developer)</option>
+        <option value="">Loading team...</option>
       </select>
       <button class="secondary" onclick="runSimulation()">Execute Bounded Simulation</button>
       <div id="simResults" style="margin-top:10px;"></div>
@@ -58,7 +55,8 @@
     <div id="recommendationDetails"></div>
     <div style="margin-top: 15px; display:flex; gap:10px;">
       <button class="contrast" onclick="submitDecision('Approve')">Approve & Execute DB Write</button>
-      <button class="secondary" onclick="submitDecision('Reject')">Reject Recommendation</button>
+      <button class="secondary" onclick="requestAlternative()">Request Alternative Recommendation</button>
+      <button class="secondary" onclick="submitDecision('Reject')">Terminate Request</button>
     </div>
   </section>
 
@@ -71,9 +69,12 @@
   <script>
     let activeTaskPayload = null;
     let activeRecommendation = null;
+    let currentRejectedCandidates = [];
 
     async function refreshDashboard() {
-      const res = await fetch('/api/dashboard/overview');
+      const res = await fetch('/api/dashboard/overview', {
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': 'mgr-token-777' }
+      });
       const data = await res.json();
       
       // Render Team Cards
@@ -95,9 +96,29 @@
       // Render Audits
       const auditContainer = document.getElementById('auditLogContainer');
       if (data.recent_audits.length > 0) {
-        auditContainer.innerHTML = data.recent_audits.map(a => `
-          <div><small><strong>[${a.timestamp.slice(11,19)}] ${a.event_type}</strong> — Task: <em>${a.task_title}</em> | Employee: ${a.target_employee_id || 'N/A'}</small></div>
-        `).join('');
+        auditContainer.innerHTML = data.recent_audits.map(a => {
+          let notifBadge = '';
+          if (a.details && a.details.notification_sent === true) {
+            notifBadge = '<span class="status-badge badge-ok" style="font-size: 9px; margin-left: 5px;">📢 Notified</span>';
+          } else if (a.details && a.details.notification_sent === false) {
+            notifBadge = '<span class="status-badge badge-high" style="font-size: 9px; margin-left: 5px;">⚠️ Notification Failed</span>';
+          }
+          return `
+            <div><small><strong>[${a.timestamp.slice(11,19)}] ${a.event_type}</strong> — Task: <em>${a.task_title}</em> | Employee: ${a.target_employee_id || 'N/A'}${notifBadge}</small></div>
+          `;
+        }).join('');
+      }
+
+      // Populate Simulator Dropdown
+      const simSelect = document.getElementById('simSelect');
+      if (simSelect && data.team_workload) {
+        const currentVal = simSelect.value;
+        simSelect.innerHTML = data.team_workload.map(emp => 
+          `<option value="${emp.employee_id}">${emp.name} (${emp.employee_id} — ${emp.role})</option>`
+        ).join('');
+        if (currentVal && data.team_workload.some(e => e.employee_id === currentVal)) {
+          simSelect.value = currentVal;
+        }
       }
     }
 
@@ -105,35 +126,75 @@
       const prompt = document.getElementById('promptInput').value;
       if (!prompt) return alert('Enter a task description.');
 
-      document.getElementById('pipelineStatus').innerHTML = '<small>Executing LangGraph agent nodes via local Llama 3...</small>';
+      document.getElementById('pipelineStatus').innerHTML = '<small>Connecting to AI pipeline stream...</small>';
       document.getElementById('approvalGate').style.display = 'none';
 
-      const res = await fetch('/api/workflow/recommend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ manager_prompt: prompt })
-      });
-      const data = await res.json();
-      
-      activeTaskPayload = data.parsed_task;
-      activeRecommendation = data.ai_recommendation;
+      try {
+        const response = await fetch('/api/workflow/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'mgr-token-777' },
+          body: JSON.stringify({ 
+            manager_prompt: prompt,
+            rejected_candidates: currentRejectedCandidates
+          })
+        });
 
-      document.getElementById('pipelineStatus').innerHTML = `<small style="color:#3fb950;">Analysis complete. Recommended candidate: <strong>${activeRecommendation.recommended_employee_id}</strong></small>`;
-      
-      document.getElementById('approvalGate').style.display = 'block';
-      document.getElementById('recommendationDetails').innerHTML = `
-        <p><strong>Task:</strong> ${activeTaskPayload.title} | <strong>Effort:</strong> ${activeTaskPayload.estimated_effort_hours}h | <strong>Priority:</strong> ${activeTaskPayload.priority}</p>
-        <p><strong>Recommended:</strong> ${activeRecommendation.recommended_employee_id} (Confidence: ${activeRecommendation.confidence})</p>
-        <p><strong>Reasoning:</strong> ${activeRecommendation.reasoning}</p>
-        <p><strong>Trade-offs:</strong> ${activeRecommendation.tradeoffs}</p>
-      `;
-      refreshDashboard();
+        if (!response.ok) {
+          throw new Error(`Server returned status ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop();
+
+          for (const part of parts) {
+            const trimmed = part.trim();
+            if (!trimmed) continue;
+
+            const lines = trimmed.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data:')) {
+                const jsonStr = line.replace(/^data:\s*/, '').trim();
+                if (!jsonStr) continue;
+                const data = JSON.parse(jsonStr);
+
+                if (data.status !== 'complete') {
+                  document.getElementById('pipelineStatus').innerHTML = `<small>${data.message}</small>`;
+                } else {
+                  activeTaskPayload = data.parsed_task;
+                  activeRecommendation = data.ai_recommendation;
+
+                  document.getElementById('pipelineStatus').innerHTML = `<small style="color:#3fb950;">Analysis complete. Recommended candidate: <strong>${activeRecommendation.recommended_employee_id}</strong></small>`;
+                  document.getElementById('approvalGate').style.display = 'block';
+                  document.getElementById('recommendationDetails').innerHTML = `
+                    <p><strong>Task:</strong> ${activeTaskPayload.title} | <strong>Effort:</strong> ${activeTaskPayload.estimated_effort_hours}h | <strong>Priority:</strong> ${activeTaskPayload.priority}</p>
+                    <p><strong>Recommended:</strong> ${activeRecommendation.recommended_employee_id} (Confidence: ${activeRecommendation.confidence})</p>
+                    <p><strong>Reasoning:</strong> ${activeRecommendation.reasoning}</p>
+                    <p><strong>Trade-offs:</strong> ${activeRecommendation.tradeoffs}</p>
+                  `;
+                  refreshDashboard();
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        document.getElementById('pipelineStatus').innerHTML = `<small style="color:#d32f2f;">Stream error: ${err.message}</small>`;
+      }
     }
 
     async function submitDecision(decision) {
       const res = await fetch('/api/workflow/approve', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': 'mgr-token-777' },
         body: JSON.stringify({
           parsed_task: activeTaskPayload,
           recommended_employee_id: activeRecommendation.recommended_employee_id,
@@ -141,18 +202,81 @@
         })
       });
       const data = await res.json();
-      alert(`Decision Recorded: ${data.status}\n${data.message}`);
+      let alertMsg = `Decision Recorded: ${data.status}\n${data.message}`;
+      if (data.ticket_id) {
+        alertMsg += `\nDispatched to external system as: ${data.ticket_id}`;
+      }
+      alert(alertMsg);
       document.getElementById('approvalGate').style.display = 'none';
       document.getElementById('promptInput').value = '';
       document.getElementById('pipelineStatus').innerHTML = '';
+      currentRejectedCandidates = [];
       refreshDashboard();
+    }
+
+    function requestAlternative() {
+      if (activeRecommendation && activeRecommendation.recommended_employee_id) {
+        currentRejectedCandidates.push(activeRecommendation.recommended_employee_id);
+      }
+      runWorkflow();
     }
 
     async function runSimulation() {
       const empId = document.getElementById('simSelect').value;
-      const res = await fetch(`/api/simulate/absence/${empId}`);
-      const data = await res.json();
-      document.getElementById('simResults').innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+      const resultsDiv = document.getElementById('simResults');
+      resultsDiv.innerHTML = '<small style="color: #58a6ff;">Running bounded simulation...</small>';
+      
+      try {
+        const res = await fetch(`/api/simulate/absence/${empId}`, {
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': 'mgr-token-777' }
+        });
+        const data = await res.json();
+        
+        // Handle case where no tasks are affected
+        if (data.tasks_affected === 0) {
+          resultsDiv.innerHTML = `
+            <div style="margin-top: 15px; padding: 12px; background: #0d1117; border-radius: 6px; border-left: 4px solid #388e3c;">
+              <strong>No active tasks affected.</strong> The employee can take leave without requiring reassignments.
+            </div>`;
+          return;
+        }
+
+        // Build a readable HTML table for the reassignment plan
+        let html = `
+          <div style="margin-top: 15px; padding: 12px; background: #0d1117; border-radius: 6px; border-left: 4px solid #f57c00;">
+            <p style="margin-bottom: 10px;"><strong>⚠️ Blast Radius:</strong> ${data.tasks_affected} active tasks require reassignment.</p>
+            <table style="margin-bottom: 0; font-size: 13px; width: 100%;">
+              <thead>
+                <tr>
+                  <th>Task Title</th>
+                  <th>Reassign To</th>
+                  <th>Impact</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+
+        data.reassignment_plan.forEach(plan => {
+          html += `
+            <tr>
+              <td><em>${plan.task_title}</em></td>
+              <td><strong>${plan.replacement_name}</strong> <small>(${plan.recommended_replacement_id})</small></td>
+              <td><span class="status-badge badge-med">${plan.hypothetical_new_capacity}h left</span> <small>(was ${plan.original_capacity}h)</small></td>
+            </tr>
+          `;
+        });
+
+        html += `
+              </tbody>
+            </table>
+          </div>
+        `;
+        
+        resultsDiv.innerHTML = html;
+
+      } catch (error) {
+        resultsDiv.innerHTML = `<small style="color: #f85149;">Error running simulation: ${error.message}</small>`;
+      }
     }
 
     // Initialize on load
